@@ -19,7 +19,8 @@ function attachBot({ client, cfg, store, saveStore, queue }) {
   const spamRuntime = new Map(); // userId -> { msgs: number[], warns: number[] }
   // STREAM ODA SAHİP (channelId -> userId)
   const streamOdaSahip = new Map();
-  
+  // actorId -> timestamps[]
+const streamerServerMuteRuntime = new Map();
 
 // server-mute abuse runtime (executorId -> timestamps[])
   const serverMuteAbuseRuntime = new Map();
@@ -496,36 +497,61 @@ client.on("guildMemberUpdate", (oldMember, newMember) => {
   if (newMember.guild.id !== cfg.guildId) return;
   if (oldMember.roles.cache.size !== newMember.roles.cache.size) backupRoles(newMember);
 });
- // =======================
-// STREAMER SERVER VMUTE ABUSE
+// =======================
+// STREAMER SERVER VMUTE ABUSE (streamOdaSahip logic)
 // =======================
 client.on("voiceStateUpdate", async (oldState, newState) => {
   try {
     if (!newState.guild || newState.guild.id !== cfg.guildId) return;
 
+    const guild = newState.guild;
+
+    // =========================
+    // streamOdaSahip TRACKING
+    // =========================
+    const oldCh = oldState.channelId;
+    const newCh = newState.channelId;
+
+    // sahip kanaldan çıkarsa / kanal değiştirirse sahiplik sıfırlanır
+    if (oldCh && oldCh !== newCh) {
+      const sahipId = streamOdaSahip.get(oldCh);
+      if (sahipId && sahipId === newState.id) streamOdaSahip.delete(oldCh);
+    }
+    if (oldCh && !newCh) {
+      const sahipId = streamOdaSahip.get(oldCh);
+      if (sahipId && sahipId === newState.id) streamOdaSahip.delete(oldCh);
+    }
+
+    // kanalda sahip yoksa ilk streaming TRUE olan sahip olur (sonra değişmez)
+    if (newCh) {
+      if (!streamOdaSahip.has(newCh) && newState.streaming === true) {
+        streamOdaSahip.set(newCh, newState.id);
+      }
+    }
+
+    // =========================
+    // SERVER MUTE yakala (false -> true)
+    // =========================
     const wasMuted = oldState.serverMute === true;
     const isMuted = newState.serverMute === true;
-
     if (wasMuted || !isMuted) return;
 
     const targetMember = newState.member;
     if (!targetMember) return;
 
-    const logs = await newState.guild.fetchAuditLogs({
-      type: AuditLogEvent.MemberUpdate,
-      limit: 6,
-    }).catch(() => null);
-
+    // Audit logdan susturanı bul
+    const logs = await guild
+      .fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 6 })
+      .catch(() => null);
     if (!logs) return;
 
     const now = Date.now();
 
     const entry = logs.entries.find((e) => {
       if (!e?.target || e.target.id !== targetMember.id) return false;
-      if (now - e.createdTimestamp > 5000) return false;
-
+      if (now - e.createdTimestamp > 8000) return false; // tolerans
       const changes = e.changes || [];
-      return changes.some((c) => c?.key === "mute" && c.new === true);
+      return changes.some((c) => c?.key === "mute" && c?.new === true);
     });
 
     if (!entry?.executorId) return;
@@ -535,55 +561,65 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     // SELF VMUTE sayma
     if (actorId === targetMember.id) return;
 
-    const actorMember = await newState.guild.members.fetch(actorId).catch(() => null);
+    const actorMember = await guild.members.fetch(actorId).catch(() => null);
     if (!actorMember) return;
 
+    // sadece streamer rolü olanlar
     if (!hasStreamerRole(actorMember)) return;
 
-    const st = getStreamerServerMuteState(actorMember.id);
-    st.count = Number(st.count || 0) + 1;
-    store.streamerServerMuteAbuse[actorMember.id] = st;
+    // ✅ YETKİLİLER MUAF (commands/mod/admin/owner)
+    if (isPrivileged(actorMember)) return;
+
+    // actor hangi kanalda? (mute olayı hangi kanalda oldu)
+    const chId = newState.channelId;
+    const sahipId = chId ? streamOdaSahip.get(chId) : null;
+    const isStreamOdaSahip = sahipId && sahipId === actorId;
+
+    // limitler
+    const windowMs = isStreamOdaSahip ? 20000 : 5000;
+    const limit = isStreamOdaSahip ? 15 : 3;
+
+    // runtime timestamps
+    const arr = streamerServerMuteRuntime.get(actorId) || [];
+    arr.push(now);
+    while (arr.length && now - arr[0] > windowMs) arr.shift();
+    streamerServerMuteRuntime.set(actorId, arr);
+
+    if (arr.length < limit) return;
+
+    // cezalıya düşür
+    const penaltyRole = await guild.roles.fetch(cfg.penaltyRoleId).catch(() => null);
+    if (!penaltyRole) return;
+
+    const why = isStreamOdaSahip
+      ? `streamOdaSahip abuse: 20sn içinde ${arr.length}/${limit} sunucuda sustur`
+      : `streamer abuse: 5sn içinde ${arr.length}/${limit} sunucuda sustur`;
+
+    await setOnlyPenalty(actorMember, penaltyRole, why);
+
+    const t = Date.now();
+    store.penaltyPersist[actorMember.id] = { active: true, since: t, by: "system", reason: why };
+    delete store.penalties[actorMember.id];
+
+    pushPenaltyHistory(actorMember.id, {
+      ts: t,
+      by: "system",
+      reason: why,
+      minutes: null,
+      source: "streamer-server-vmute-abuse",
+    });
+
     saveStore(store);
 
-    if (st.count >= STREAMER_SERVER_MUTE_ABUSE.punishAt) {
-      const penaltyRole = await newState.guild.roles.fetch(cfg.penaltyRoleId).catch(() => null);
-      if (!penaltyRole) return;
-
-      await setOnlyPenalty(actorMember, penaltyRole, STREAMER_SERVER_MUTE_ABUSE.punishReason);
-
-      const t = Date.now();
-
-      store.penaltyPersist[actorMember.id] = {
-        active: true,
-        since: t,
-        by: "system",
-        reason: STREAMER_SERVER_MUTE_ABUSE.punishReason,
-      };
-
-      delete store.penalties[actorMember.id];
-
-      pushPenaltyHistory(actorMember.id, {
-        ts: t,
-        by: "system",
-        reason: STREAMER_SERVER_MUTE_ABUSE.punishReason,
-        minutes: null,
-        source: "streamer-server-vmute-abuse",
-      });
-
-      st.windowStart = t;
-      st.count = 0;
-      store.streamerServerMuteAbuse[actorMember.id] = st;
-      saveStore(store);
-
-      await logCezaEmbed(newState.guild, {
-        title: "⛔ STREAMER SERVER VMUTE ABUSE",
-        description: `Yetkili cezalıya düştü`,
-        fields: [
-          { name: "Yetkili", value: `${actorMember.user.tag} (${actorMember.id})`, inline: false },
-          { name: "Son hedef", value: `${targetMember.user.tag}`, inline: false },
-        ],
-      });
-    }
+    await logCezaEmbed(guild, {
+      title: "⛔ STREAM ODA ABUSE → CEZALI",
+      description: `Yetkili cezalıya düştü`,
+      fields: [
+        { name: "Kişi", value: `${actorMember.user.tag} (${actorMember.id})`, inline: false },
+        { name: "Son hedef", value: `${targetMember.user.tag} (${targetMember.id})`, inline: false },
+        { name: "Sebep", value: why, inline: false },
+      ],
+    });
   } catch (e) {
     console.error("[STREAMER_VMUTE_ABUSE]", e);
   }
