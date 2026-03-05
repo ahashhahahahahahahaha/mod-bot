@@ -1,0 +1,46 @@
+Discord Interaction (/mute /ceza /vmute ...)
+        │
+        ▼
+┌──────────────────────────────┐
+│ discord/handlers/interaction  │   (router)
+└───────────────┬──────────────┘
+                ▼
+      ┌──────────────────┐
+      │ core/access       │   (rol zorunluluğu, mod level,
+      │ - hasCommands     │    self-action yasak,
+      │ - assertCanUse    │    equal/higher target yasak)
+      └─────────┬────────┘
+                ▼
+      ┌──────────────────┐
+      │ core/rateLimiter  │   (staff 10dk, target 30dk,
+      │ - checkAndHit     │    aggregation counter)
+      └─────────┬────────┘
+                ▼
+      ┌──────────────────┐
+      │ core/targetLock   │   (aynı hedefte çakışma yok)
+      │ - tryAcquire      │
+      │ - release         │
+      └─────────┬────────┘
+                ▼
+      ┌──────────────────┐
+      │ core/queue        │   (Discord API spacing,
+      │ - enqueue         │    concurrency kontrol)
+      └─────────┬────────┘
+                ▼
+      ┌────────────────────────────┐
+      │ services/*                  │   (iş mantığı)
+      │ - muteService               │
+      │ - vmuteService              │
+      │ - penaltyService            │
+      │ - streamerService           │
+      └─────────┬──────────────────┘
+                ▼
+   ┌──────────────────────┐     ┌──────────────────────┐
+   │ store (SQLite)       │     │ ops/opsLog (embed)   │
+   │ - atomic writes      │     │ - modlog channel     │
+   └─────────┬────────────┘     └─────────┬────────────┘
+             ▼                              ▼
+          ┌────────────────────────────────────┐
+          │ ops/opsEvents (publish to BUS)     │
+          │ - JSONL append / Redis publish     │
+          └────────────────────────────────────┘

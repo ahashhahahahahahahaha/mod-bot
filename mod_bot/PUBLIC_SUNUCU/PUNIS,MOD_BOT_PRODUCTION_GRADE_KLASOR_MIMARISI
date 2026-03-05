@@ -1,0 +1,41 @@
+punish-bot/
+  src/
+    index.js                  # sadece boot + event attach
+    config.js                 # cfg + must + sabitler
+    context.js                # (opsiyonel) dependency container (cfg/store/ops/locks)
+    store/
+      index.js                # store facade (json veya sqlite seçimi)
+      jsonStore.js            # penalties.json atomic
+      sqliteStore.js          # (ileride) sqlite implementasyonu
+      migrations/             # (sqlite için)
+    utils/
+      safeText.js
+      time.js
+      ids.js                  # penaltyId, eventId generator
+    core/
+      queue.js                # senin queue
+      access.js               # hasCommands + getModLevel + assertCanUse
+      rateLimiter.js          # staff 10dk + target 30dk + aggregation
+      targetLock.js           # aynı hedef kilidi (kritik)
+      errors.js               # UserError, InternalError (ephemeral mesaj ayrımı)
+    ops/
+      opsLog.js               # modlog embed (discord channel)
+      opsEvents.js            # ops-events publish (JSONL/Redis)
+    discord/
+      commands.js             # slash builders (builders)
+      registerCommands.js     # REST register
+      handlers/
+        interaction.js        # router (case -> service)
+        voice.js              # voiceStateUpdate (vmute enforcement)
+        ready.js              # startup sweeps (mute/vmute restore)
+    services/
+      penaltyService.js       # /ceza /af /sicil /cezalimit
+      muteService.js          # /mute /unmute + manual mute store
+      vmuteService.js         # /vmute /vunmute + enforcement helpers
+      streamerService.js      # /streamerver /streamercek
+      spamService.js          # (opsiyonel) message spam logic
+  data/
+    penalties.json            # JSON store seçersen
+    ops-events.jsonl          # BUS file seçersen
+  .env
+  package.json

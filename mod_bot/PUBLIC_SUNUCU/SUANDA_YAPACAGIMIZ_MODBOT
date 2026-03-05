@@ -1,0 +1,40 @@
+## 6) Şimdi “bizim sıradaki gerçek işimiz” (Punish/Mod bot build order)
+
+Sen “kurulum tamam” dediğin için direkt geliştirme sırası:
+
+1. `core/targetLock.js` ✅ (en kritik)
+    
+2. `core/access.js` ✅ (yetki + target yasakları)
+    
+3. `core/rateLimiter.js` ✅
+    
+4. `store.js` atomic ✅
+    
+5. `ops/opsEvents.js` (şema + publish mekanizması) ✅
+    
+6. `services/muteService.js` → timeout + restore ✅
+    
+7. `services/vmuteService.js` → enforcement ✅
+    
+8. `services/penaltyService.js` → ceza/af/sicil/limit ✅
+    
+9. `discord/handlers/interaction.js` router + command register ✅
+
+
+5) Guard/Auth bot ile çakışmaması için “sınır”
+
+Punish/Mod bot asla şu işleri yapmamalı:
+
+rol/kanal/yapılandırma “kritik” değişiklikleri (Guard’ın işi)
+
+staff yetki verme/çekme (Guard’ın /yetkiver + onay işi)
+
+lockdown
+
+audit log revert (Guard)
+
+Punish/Mod bot sadece:
+
+cezalar (warn/mute/vmute/jail/ban) + streamer role (eğer “kritik değil” sınıfındaysa)
+
+

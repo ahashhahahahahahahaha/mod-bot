@@ -1,0 +1,31 @@
+                    ┌───────────────────────────┐
+                    │       Guard/Auth Bot      │
+                    │  - protected actions      │
+ Discord            │  - lockdown               │
+ Events/Commands ──►│  - /yetkiver + onay       │
+                    │  - audit retry + revert   │
+                    │  - /yetkiengel            │
+                    └───────────┬───────────────┘
+                                │ (ops-events publish)
+                                ▼
+                     ┌──────────────────────────┐
+                     │    ops-events BUS         │
+                     │  (JSONL / Redis / NATS)   │
+                     └───────┬───────────┬──────┘
+                             │           │
+                             ▼           ▼
+                ┌─────────────────┐  ┌─────────────────┐
+                │ Punish/Mod Bot  │  │    Level Bot     │
+                │ - mute/vmute    │  │ - voice tracking │
+                │ - ceza/af/sicil │  │ - weekly report  │
+                │ - streamer role │  │ - /verilerim     │
+                │ - rate/lock     │  │ - consume events │
+                └───────┬─────────┘  └────────┬────────┘
+                        │                      │
+                        │                      │
+                        ▼                      ▼
+              ┌─────────────────┐     ┌──────────────────┐
+              │   Ticket Bot    │     │   Register Bot    │
+              │ - tickets       │     │ - onboarding      │
+              │ - forms         │     │ - role assign     │
+              └─────────────────┘     └──────────────────┘

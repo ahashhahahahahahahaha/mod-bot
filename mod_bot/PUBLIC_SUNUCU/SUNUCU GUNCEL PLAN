@@ -1,0 +1,145 @@
+### Bu neden güvenli?
+
+- Yetki kontrolü **tek yerde**: `core/access.js`
+    
+- Rate limit + kilit **tek yerde**: `core/rateLimiter.js` + `core/targetLock.js`
+    
+- Log / event yayınlama **tek yerde**: `ops/`
+    
+- Komut handler’ı sadece “yönlendirici”: `discord/handlers/interaction.js`
+    
+- “Yanlışlıkla bir komut bypass’ladı” gibi açıklar çok azalır.
+
+## 2) Modüller nasıl haberleşiyor? (kafanı karıştırmasın diye net)
+
+**index.js** sadece şunu yapar:
+
+- `cfg` yükle
+    
+- `store` yükle
+    
+- `client` başlat
+    
+- `queue` oluştur
+    
+- handler’ları attach et
+    
+
+Ve handler’lara “ihtiyacı olan şeyleri parametre olarak” verir:
+
+- `interactionHandler({ client, cfg, store, queue, services })`
+    
+
+Yani bir modül diğerini “rastgele require edip global kullanmaz”.  
+Bu yapı büyük projelerde standard.
+
+
+## 3) “Tek seferde refactor yapmayacağız” — 4 küçük adım
+
+Senin dediğin gibi: **ufak ufak**.
+
+### Adım-1 (en risksiz): “Extract helpers”
+
+Tek dosyadan sadece şu 5 parçayı ayırırız:
+
+- `safeText`
+    
+- `msToHuman`
+    
+- `queue`
+    
+- `access` (hasCommands/getModLevel/deny/requireAccess yerine assertCanUse)
+    
+- `store load/save` (atomic save)
+    
+
+Bu adımda bot davranışı %99 aynı kalır.
+
+### Adım-2: “Ops log + ops events”
+
+- ops-log embed fonksiyonlarını `ops/opsLog.js`e taşı
+    
+- ops-events publish’i `ops/opsEvents.js`e taşı
+    
+
+Yine davranış değişmez, sadece temizlenir.
+
+### Adım-3: “Services”
+
+Komutların içini servisleştiririz:
+
+- `/ceza` → penaltyService
+    
+- `/mute` → muteService
+    
+- `/vmute` → vmuteService
+    
+- `/streamer...` → streamerService
+    
+
+interaction handler artık sadece:
+
+- parametreleri alır
+    
+- `access` kontrol eder
+    
+- `rateLimiter/targetLock` kontrol eder
+    
+- servisi çağırır
+    
+
+### Adım-4: “Spam ve sweep”
+
+Spam’ı istersen bu botta bırakırız (ya da Guard bot’a taşırız).  
+Sweep’ler `services/sweeps.js`.
+
+> Bu 4 adımı tek günde bile yaparsın ama **biz adım adım** ilerleyeceğiz.
+
+
+## 4) Büyük public sunucuda en kritik 5 güvenlik kuralı (Punish bot içinde şart)
+
+Sen “yetkililer sızmasın / bypass olmasın” diyorsun ya; Punish bot’ta şu 5 şey şart:
+
+1. **Komut Gate Sistemi (3 kapı)**
+    
+    - kanal
+        
+    - Commands rolü
+        
+    - mod level
+        
+2. **Target yasağı**
+    
+    - self-action yok
+        
+    - target owner/bot yok
+        
+    - target modLevel>0 yok
+        
+3. **Target lock (çakışma engeli)**
+    
+    - aynı hedefte aynı anda 2 işlem olmaz  
+        Bu “çok yetkili” ortamında en büyük kurtarıcıdır.
+        
+4. **Rate limit (anti-abuse)**
+    
+    - staff 10dk pencere limitleri
+        
+    - target 30dk pencere limitleri
+        
+    - aşarsa reddet + ops-log + ops-events
+        
+5. **Ops-events kanalı güvenliği**
+    
+    - Kanal izinleri: sadece botlar + sen
+        
+    - Mesajları mention kapalı (`allowedMentions: { parse: [] }`)
+        
+    - Event JSON’ları sabit şema
+        
+
+> “Winner/Mod abuse” kısmının asıl ağır topu Guard/Auth bot olacak.  
+> Ama Punish bot kendi içinden de abuse’u ciddi keser.
+
+
+
