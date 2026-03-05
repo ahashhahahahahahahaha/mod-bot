@@ -17,8 +17,20 @@ const { SPAM, TEN_HOURS, CEZA_LIMIT } = require("./config");
 function attachBot({ client, cfg, store, saveStore, queue }) {
   // RAM runtime (restart olunca sıfırlanır)
   const spamRuntime = new Map(); // userId -> { msgs: number[], warns: number[] }
+  // STREAM ODA SAHİP (channelId -> userId)
+  const streamOdaSahip = new Map();
+  
+
+// server-mute abuse runtime (executorId -> timestamps[])
+  const serverMuteAbuseRuntime = new Map();
+
+// store alanları garanti
+    store.voiceMutes = store.voiceMutes || {};
+    store.penaltyPersist = store.penaltyPersist || {};
+    store.penalties = store.penalties || {};
+    store.penaltyHistory = store.penaltyHistory || {};
     store.streamerServerMuteAbuse = store.streamerServerMuteAbuse || {};
-      store.voiceMutes = store.voiceMutes || {};
+    store.voiceMutes = store.voiceMutes || {};
     // VMUTE service (voiceStateUpdate attach eder)
   const vmute = setupVmuteService(client, cfg, console);
 
@@ -141,7 +153,14 @@ function getModLevel(member) {
 
   return 0;
 }
-
+function isPrivileged(member) {
+  if (!member) return false;
+  if (member.id === cfg.ownerId) return true;
+  if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+  if (hasCommands(member)) return true;
+  if (getModLevel(member) > 0) return true;
+  return false;
+}
 async function deny(interaction, msg) {
   const content = `❌ ${msg}`;
   if (interaction.deferred || interaction.replied) {
