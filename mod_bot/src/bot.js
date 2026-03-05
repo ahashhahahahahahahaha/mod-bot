@@ -395,11 +395,11 @@ async function vmuteSweep() {
       if (now < data.expiresAt) continue;
 
       const member = await guild.members.fetch(userId).catch(() => null);
-      if (member) {
+     if (member) {
         if (member.roles.cache.has(vmuteRole.id)) {
           await member.roles.remove(vmuteRole, "Vmute süresi bitti").catch(() => {});
         }
-        // seste ise unmute dene
+
         try {
           if (member.voice?.channelId && member.voice.serverMute === true) {
             await member.voice.setMute(false, "Vmute süresi bitti");
@@ -574,6 +574,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 // =======================
 client.on("ready", async () => {
   console.log(`[READY] ${client.user.tag}`);
+
   try {
     await registerSlashCommands();
   } catch (e) {
@@ -582,13 +583,15 @@ client.on("ready", async () => {
 
   await penaltySweep();
   await muteSweep();
-    // ✅ Bot açılınca seste olan vmuted’ları bir kere mute et
+  await vmuteSweep();
+
+  // ✅ Bot açılınca seste olan vmuted’ları bir kere mute et
   await vmute.enforceOnReady();
+
   setInterval(penaltySweep, 30 * 1000);
   setInterval(muteSweep, 30 * 1000);
   setInterval(vmuteSweep, 30 * 1000);
 });
-
 // =======================
 // INTERACTIONS (QUEUE + DEFER FIX)
 // =======================
